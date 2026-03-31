@@ -5,9 +5,12 @@
  *
  * Uses the Authorization Code + PKCE flow so no backend is required.
  * To use:
- *   1. Go to https://developer.spotify.com/dashboard and create an app.
- *   2. Add this page's URL as a Redirect URI (e.g. https://ap0ught.github.io/Matrix-p5/).
- *   3. Click "Connect Spotify", enter your Client ID, and authorise.
+ *   1. Click "Connect Spotify" and authorise with your Spotify account.
+ *   2. The app is pre-configured with a Spotify Client ID, so no manual
+ *      setup is needed for most users.
+ *   3. To use your own Client ID, create a free app at
+ *      https://developer.spotify.com/dashboard, add this page's URL as a
+ *      Redirect URI, and update SPOTIFY_DEFAULT_CLIENT_ID below.
  *
  * Exported state (read by sketch.js):
  *   spotifyState.bpm        — current track BPM (null = not connected / no track)
@@ -23,6 +26,15 @@ const SPOTIFY_TOKEN_EXPIRY_KEY = "matrix_spotify_token_expiry";
 const SPOTIFY_CODE_VERIFIER_KEY = "matrix_spotify_cv";
 const SPOTIFY_REFRESH_TOKEN_KEY = "matrix_spotify_refresh_token";
 
+// Pre-configured Client ID for the Matrix Digital Rain Spotify app.
+// This is a PKCE public client — the Client ID is not a secret and is safe
+// to include in client-side code. Note: this Client ID is registered with
+// specific redirect URIs in the Spotify Developer Dashboard (e.g.
+// https://ap0ught.github.io/Matrix-p5/). It will only work when the page
+// is served from one of those registered domains. Replace with your own
+// Client ID if you deploy this under a different domain.
+const SPOTIFY_DEFAULT_CLIENT_ID = "5897079698bd4b0695e2d5364cdfbde2";
+
 const SPOTIFY_AUTH_URL = "https://accounts.spotify.com/authorize";
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
@@ -32,6 +44,17 @@ const POLL_INTERVAL_MS = 5000;
 
 // Buffer (ms) before token expiry at which we proactively refresh.
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
+
+// ─── Client ID resolution ─────────────────────────────────────────────────────
+
+/**
+ * Return the effective Client ID — either one previously stored by the user
+ * or the pre-configured default.  Storing it ensures the same ID is used
+ * during the token-refresh leg of the PKCE flow.
+ */
+function getClientId() {
+  return localStorage.getItem(SPOTIFY_CLIENT_ID_KEY) || SPOTIFY_DEFAULT_CLIENT_ID;
+}
 
 // Shared state object — sketch.js reads from this.
 const spotifyState = {
@@ -155,8 +178,7 @@ function storeToken(data) {
 
 /** Return a valid access token, refreshing if necessary. */
 async function getAccessToken() {
-  const clientId = localStorage.getItem(SPOTIFY_CLIENT_ID_KEY);
-  if (!clientId) return null;
+  const clientId = getClientId();
 
   const token = localStorage.getItem(SPOTIFY_TOKEN_KEY);
   const expiry = parseInt(localStorage.getItem(SPOTIFY_TOKEN_EXPIRY_KEY) || "0", 10);
@@ -302,11 +324,17 @@ function updateUI() {
  * present) and starts polling if a token is already stored.
  */
 async function initSpotify() {
+  // Seed the stored Client ID with the default on first run so the PKCE
+  // callback leg can always find a consistent ID in localStorage.
+  if (!localStorage.getItem(SPOTIFY_CLIENT_ID_KEY)) {
+    localStorage.setItem(SPOTIFY_CLIENT_ID_KEY, SPOTIFY_DEFAULT_CLIENT_ID);
+  }
+
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
-  const clientId = localStorage.getItem(SPOTIFY_CLIENT_ID_KEY);
+  const clientId = getClientId();
 
-  if (code && clientId) {
+  if (code) {
     // Remove the code from the URL so a refresh doesn't re-attempt the exchange.
     window.history.replaceState({}, document.title, window.location.pathname);
     try {
@@ -325,29 +353,13 @@ async function initSpotify() {
   }
 
   // Wire up the "Connect Spotify" button.
+  // Because the Client ID is pre-configured, clicking the button goes straight
+  // to Spotify authorisation without a manual ID entry prompt.
   const connectBtn = document.getElementById("spotify-connect-btn");
   if (connectBtn) {
     connectBtn.addEventListener("click", async (e) => {
       e.stopPropagation(); // Don't trigger fullscreen.
-      let id = localStorage.getItem(SPOTIFY_CLIENT_ID_KEY) || "";
-      id = window.prompt(
-        "Enter your Spotify Client ID\n\n" +
-          "Create a free app at https://developer.spotify.com/dashboard\n" +
-          "and add this page's URL as a Redirect URI.",
-        id
-      );
-      if (id && id.trim()) {
-        const trimmed = id.trim();
-        if (!isValidClientId(trimmed)) {
-          window.alert(
-            "Invalid Client ID.\n\n" +
-              "A Spotify Client ID is 32 lowercase hexadecimal characters.\n" +
-              "Please copy it exactly from your Spotify Developer Dashboard."
-          );
-          return;
-        }
-        await startSpotifyAuth(trimmed);
-      }
+      await startSpotifyAuth(getClientId());
     });
   }
 }

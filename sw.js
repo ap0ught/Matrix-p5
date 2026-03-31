@@ -55,6 +55,7 @@ self.addEventListener("fetch", (event) => {
 
   if (requestHostname === "api.spotify.com" ||
       requestHostname === "accounts.spotify.com") {
+    // Let the browser handle Spotify requests directly — no cache, always fresh.
     return;
   }
 
