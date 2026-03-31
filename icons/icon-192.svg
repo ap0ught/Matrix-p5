@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" fill="#000000"/>
+  <text x="12" y="44" font-family="monospace" font-size="32" fill="#00c853" opacity="0.35">ア</text>
+  <text x="52" y="44" font-family="monospace" font-size="32" fill="#00c853" opacity="0.35">ウ</text>
+  <text x="92" y="44" font-family="monospace" font-size="32" fill="#00c853" opacity="0.35">エ</text>
+  <text x="132" y="44" font-family="monospace" font-size="32" fill="#00c853" opacity="0.35">オ</text>
+  <text x="12" y="82" font-family="monospace" font-size="32" fill="#00c853" opacity="0.55">カ</text>
+  <text x="52" y="82" font-family="monospace" font-size="32" fill="#00c853" opacity="0.55">キ</text>
+  <text x="92" y="82" font-family="monospace" font-size="32" fill="#00c853" opacity="0.55">ク</text>
+  <text x="132" y="82" font-family="monospace" font-size="32" fill="#00c853" opacity="0.55">ケ</text>
+  <!-- Central bright "M" -->
+  <text x="48" y="136" font-family="monospace" font-weight="bold" font-size="80" fill="#00e676">M</text>
+  <text x="12" y="178" font-family="monospace" font-size="32" fill="#00c853" opacity="0.35">サ</text>
+  <text x="52" y="178" font-family="monospace" font-size="32" fill="#00c853" opacity="0.35">シ</text>
+  <text x="92" y="178" font-family="monospace" font-size="32" fill="#00c853" opacity="0.35">ス</text>
+  <text x="132" y="178" font-family="monospace" font-size="32" fill="#00c853" opacity="0.35">セ</text>
+</svg>

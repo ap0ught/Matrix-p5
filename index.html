@@ -4,6 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Matrix</title>
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="manifest.json" />
+
+    <!-- PWA / mobile-browser chrome hints -->
+    <meta name="theme-color" content="#00e676" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Matrix" />
+
+    <!-- Apple touch icon (fall-back for iOS home-screen installs) -->
+    <link rel="apple-touch-icon" href="icons/icon-192.svg" />
+
     <style>
       * {
         margin: 0;
@@ -22,10 +36,126 @@
       canvas {
         display: block;
       }
+
+      /* ── Spotify overlay ─────────────────────────────────────────────── */
+      #spotify-overlay {
+        position: fixed;
+        bottom: 18px;
+        right: 18px;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+        font-family: "Courier New", Courier, monospace;
+        pointer-events: none; /* let clicks fall through to canvas by default */
+      }
+
+      /* Track info card */
+      #spotify-track-info {
+        display: none;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+        background: rgba(0, 0, 0, 0.72);
+        border: 1px solid #00c853;
+        border-radius: 4px;
+        padding: 8px 12px;
+        max-width: 260px;
+        pointer-events: none;
+      }
+
+      #spotify-track-name {
+        color: #00e676;
+        font-size: 13px;
+        font-weight: bold;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 240px;
+      }
+
+      #spotify-artist-name {
+        color: #69f0ae;
+        font-size: 11px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 240px;
+      }
+
+      #spotify-bpm {
+        color: #00c853;
+        font-size: 10px;
+        letter-spacing: 0.05em;
+      }
+
+      /* Connect button */
+      #spotify-connect-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(0, 0, 0, 0.8);
+        border: 1px solid #00c853;
+        border-radius: 4px;
+        color: #00e676;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 12px;
+        padding: 6px 12px;
+        cursor: pointer;
+        pointer-events: auto; /* this button is interactive */
+        transition: background 0.2s, border-color 0.2s;
+        white-space: nowrap;
+      }
+
+      #spotify-connect-btn:hover {
+        background: rgba(0, 230, 118, 0.12);
+        border-color: #00e676;
+      }
+
+      /* Spotify logo SVG icon embedded inline */
+      #spotify-connect-btn svg {
+        flex-shrink: 0;
+      }
     </style>
   </head>
   <body>
+    <!-- Spotify overlay: track info + connect button -->
+    <div id="spotify-overlay">
+      <div id="spotify-track-info">
+        <span id="spotify-track-name"></span>
+        <span id="spotify-artist-name"></span>
+        <span id="spotify-bpm"></span>
+      </div>
+      <button id="spotify-connect-btn" title="Connect Spotify">
+        <!-- Spotify icon -->
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="#00e676" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.623.623 0 0 1-.857.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 0 1-.277-1.215c3.809-.87 7.076-.496 9.712 1.115.294.18.387.563.207.857zm1.223-2.722a.78.78 0 0 1-1.072.257C14.1 12.266 10.65 11.84 7.438 12.78a.78.78 0 0 1-.437-1.494c3.647-1.068 7.52-.55 10.351 1.344a.78.78 0 0 1 .257 1.072zm.105-2.835C15.005 9.242 10.85 9.1 8.005 9.965a.935.935 0 1 1-.543-1.79c3.285-.998 8.003-.805 11.158 1.219a.935.935 0 0 1-.706 1.673z"/>
+        </svg>
+        Connect Spotify
+      </button>
+    </div>
+
     <script src="lib/p5.min.js"></script>
+    <script src="spotify.js"></script>
     <script src="sketch.js"></script>
+
+    <script>
+      // Register the service worker for PWA / offline support.
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("sw.js")
+            .catch(() => { /* SW registration is best-effort. */ });
+        });
+      }
+
+      // Initialise Spotify integration once the DOM is ready.
+      window.addEventListener("DOMContentLoaded", () => {
+        if (typeof initSpotify === "function") {
+          initSpotify();
+        }
+      });
+    </script>
   </body>
 </html>

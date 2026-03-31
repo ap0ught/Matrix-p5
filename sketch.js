@@ -86,8 +86,37 @@ async function requestWakeLock() {
   }
 }
 
-// Request a screen wake lock on the first user interaction.
+/**
+ * Map a Spotify BPM value (tempo) to a stream interval.
+ * Faster music (higher BPM) → shorter interval → faster rain.
+ * Range: 60 BPM → 0.08 s interval,  200 BPM → 0.01 s interval.
+ */
+function bpmToInterval(bpm) {
+  const clamped = Math.max(60, Math.min(200, bpm));
+  return map(clamped, 60, 200, 0.08, 0.01);
+}
+
+/**
+ * Return a base interval driven by the current Spotify BPM when connected,
+ * or a random value for the classic Matrix look.
+ */
+function getBaseInterval() {
+  const state = window.spotifyState;
+  if (state && state.connected && state.bpm) {
+    return bpmToInterval(state.bpm);
+  }
+  return random(0.01, 0.08);
+}
+
+// On click: enter fullscreen and request a screen wake lock.
 function mouseClicked() {
+  // Enter fullscreen if not already in it. Browsers require a user gesture,
+  // so a canvas click is the perfect trigger.
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {
+      // Fullscreen may be blocked on some devices/browsers — fail silently.
+    });
+  }
   requestWakeLock();
 }
 
@@ -108,7 +137,7 @@ class Stream {
 
     this.text = this.getRandomString(this.length);
 
-    this.interval = random(0.01, 0.08);
+    this.interval = getBaseInterval();
   }
 
   getRandomString(len) {
@@ -181,3 +210,4 @@ class Stream {
     }
   }
 }
+
