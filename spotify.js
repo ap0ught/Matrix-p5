@@ -242,7 +242,11 @@ async function pollNowPlaying() {
     const track = await fetchCurrentlyPlaying(token);
 
     if (!track) {
-      // Nothing playing — keep the last known BPM so the rain doesn't reset.
+      // Nothing playing — clear track metadata but keep the last known BPM
+      // so the rain doesn't abruptly reset. Wake up, Neo: the stream remembers
+      // the tempo of the last track that fell.
+      spotifyState.trackName = null;
+      spotifyState.artistName = null;
       updateUI();
       return;
     }

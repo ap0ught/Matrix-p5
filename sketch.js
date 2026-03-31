@@ -113,7 +113,7 @@ function getBaseInterval() {
   if (state && state.connected && state.bpm) {
     return bpmToInterval(state.bpm);
   }
-  return random(0.01, 0.08);
+  return random(FAST_INTERVAL, SLOW_INTERVAL);
 }
 
 // On click: enter fullscreen and request a screen wake lock.

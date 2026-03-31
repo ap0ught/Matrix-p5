@@ -59,6 +59,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // For navigation requests (e.g. the Spotify ?code= callback or PWA launch),
+  // match the cached app shell ignoring the query string so the page loads
+  // offline even when query params are present.
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      caches.match("./index.html").then(
+        (cached) => cached || fetch(event.request)
+      )
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(
       (cached) => cached || fetch(event.request)
