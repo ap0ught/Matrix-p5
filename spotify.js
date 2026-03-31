@@ -394,7 +394,8 @@ function updateUI() {
     trackNameEl.textContent = spotifyState.trackName;
     artistNameEl.textContent = spotifyState.artistName || "";
 
-    if (spotifyState.bpm) {
+    const hasValidBpm = Number.isFinite(spotifyState.bpm);
+    if (hasValidBpm) {
       const bpm = Math.round(spotifyState.bpm);
       bpmEl.textContent = `${bpm} BPM`;
 

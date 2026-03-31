@@ -63,7 +63,9 @@ function draw() {
   // Compute the BPM-driven interval once per frame so all Stream instances
   // share a single value without redundant recalculation.
   const state = window.spotifyState;
-  currentBpmInterval = (state && state.connected && state.bpm)
+  const hasValidBpm = state && state.connected && Number.isFinite(state.bpm);
+
+  currentBpmInterval = hasValidBpm
     ? bpmToInterval(state.bpm)
     : null;
 
