@@ -13,6 +13,10 @@ let cols;
 
 let streams = [];
 
+// BPM-driven interval computed once per draw() frame and shared across all
+// Stream instances — avoids redundant bpmToInterval() calls per stream.
+let currentBpmInterval = null;
+
 let gfx;
 let katakanaFont;
 let wakeLock = null;
@@ -55,6 +59,13 @@ async function setup() {
 function draw() {
   background(0);
   gfx.background(0);
+
+  // Compute the BPM-driven interval once per frame so all Stream instances
+  // share a single value without redundant recalculation.
+  const state = window.spotifyState;
+  currentBpmInterval = (state && state.connected && state.bpm)
+    ? bpmToInterval(state.bpm)
+    : null;
 
   for (let i = 0; i < streams.length; i++) {
     streams[i].update(timeElapsed);
@@ -190,6 +201,13 @@ class Stream {
   }
 
   update(elapsed) {
+    // Sync interval with current Spotify BPM so speed changes take effect
+    // immediately without waiting for the stream to wrap around.
+    // currentBpmInterval is pre-computed once per frame in draw().
+    if (currentBpmInterval !== null) {
+      this.interval = currentBpmInterval;
+    }
+
     if (this.time >= this.interval) {
       this.y += symbolSize;
       this.time = 0;

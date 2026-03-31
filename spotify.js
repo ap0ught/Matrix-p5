@@ -62,6 +62,7 @@ const spotifyState = {
   trackName: null,
   artistName: null,
   energy: null,
+  albumArt: null,
   connected: false,
 };
 
@@ -257,14 +258,18 @@ let pollTimer = null;
 
 /** Poll Spotify and update spotifyState. Called on an interval. */
 async function pollNowPlaying() {
+  console.log("[Matrix] pollNowPlaying — follow the white rabbit...");
+
   const token = await getAccessToken();
   if (!token) {
+    console.warn("[Matrix] No valid access token — stopping poll, disconnecting.");
     stopPolling();
     spotifyState.connected = false;
     updateUI();
     return;
   }
 
+  console.log("[Matrix] Access token valid — fetching currently playing track.");
   spotifyState.connected = true;
 
   try {
@@ -274,26 +279,68 @@ async function pollNowPlaying() {
       // Nothing playing — clear track metadata but keep the last known BPM
       // so the rain doesn't abruptly reset. Wake up, Neo: the stream remembers
       // the tempo of the last track that fell.
+      console.log("[Matrix] No track currently playing. Retaining last BPM:", spotifyState.bpm);
       spotifyState.trackName = null;
       spotifyState.artistName = null;
+      spotifyState.albumArt = null;
       updateUI();
       return;
     }
 
+    const prevTrackName = spotifyState.trackName;
     spotifyState.trackName = track.name;
     spotifyState.artistName =
       track.artists && track.artists.length > 0
         ? track.artists[0].name
         : "Unknown";
 
+    // Capture the best album art URL available (prefer smallest for overlay use).
+    if (track.album && track.album.images && track.album.images.length > 0) {
+      const images = track.album.images;
+      // images are sorted largest → smallest; pick the smallest that exists,
+      // fall back to the first (largest) if there's only one.
+      const img = images[images.length - 1];
+      spotifyState.albumArt = img.url;
+    } else {
+      spotifyState.albumArt = null;
+    }
+
+    if (prevTrackName !== spotifyState.trackName) {
+      console.log(
+        `[Matrix] Track changed → "${spotifyState.trackName}" by ${spotifyState.artistName}`
+      );
+    } else {
+      console.log(
+        `[Matrix] Now playing: "${spotifyState.trackName}" by ${spotifyState.artistName}`
+      );
+    }
+
+    console.log("[Matrix] Track ID:", track.id, "| Album art:", spotifyState.albumArt);
+
     // Fetch audio features for BPM and energy.
     const features = await fetchAudioFeatures(token, track.id);
     if (features) {
+      const prevBpm = spotifyState.bpm;
       spotifyState.bpm = features.tempo;
       spotifyState.energy = features.energy;
+      const bpmStr = spotifyState.bpm != null ? spotifyState.bpm.toFixed(1) : "n/a";
+      const energyStr = spotifyState.energy != null ? spotifyState.energy.toFixed(3) : "n/a";
+      if (prevBpm !== spotifyState.bpm) {
+        const prevBpmStr = prevBpm != null ? prevBpm.toFixed(1) : "none";
+        console.log(
+          `[Matrix] BPM updated: ${prevBpmStr} → ${bpmStr} | Energy: ${energyStr}`
+        );
+      } else {
+        console.log(
+          `[Matrix] BPM: ${bpmStr} | Energy: ${energyStr}`
+        );
+      }
+    } else {
+      console.log("[Matrix] Audio features unavailable — BPM unchanged:", spotifyState.bpm);
     }
-  } catch {
-    // Fail silently — the rain keeps falling.
+  } catch (err) {
+    // Log the error but keep the rain falling.
+    console.warn("[Matrix] pollNowPlaying error:", err);
   }
 
   updateUI();
@@ -301,12 +348,14 @@ async function pollNowPlaying() {
 
 function startPolling() {
   if (pollTimer !== null) return;
+  console.log("[Matrix] Starting Spotify poll — interval:", POLL_INTERVAL_MS, "ms");
   pollNowPlaying(); // Immediate first poll.
   pollTimer = setInterval(pollNowPlaying, POLL_INTERVAL_MS);
 }
 
 function stopPolling() {
   if (pollTimer !== null) {
+    console.log("[Matrix] Stopping Spotify poll.");
     clearInterval(pollTimer);
     pollTimer = null;
   }
@@ -327,6 +376,8 @@ function updateUI() {
   const trackNameEl = document.getElementById("spotify-track-name");
   const artistNameEl = document.getElementById("spotify-artist-name");
   const bpmEl = document.getElementById("spotify-bpm");
+  const speedEl = document.getElementById("spotify-speed");
+  const albumArtEl = document.getElementById("spotify-album-art");
 
   if (!overlay) return;
 
@@ -342,9 +393,29 @@ function updateUI() {
     trackInfo.style.display = "flex";
     trackNameEl.textContent = spotifyState.trackName;
     artistNameEl.textContent = spotifyState.artistName || "";
-    bpmEl.textContent = spotifyState.bpm
-      ? `${Math.round(spotifyState.bpm)} BPM`
-      : "";
+
+    if (spotifyState.bpm) {
+      const bpm = Math.round(spotifyState.bpm);
+      bpmEl.textContent = `${bpm} BPM`;
+
+      // Compute the mapped rain speed and display it in milliseconds.
+      const interval = bpmToInterval(spotifyState.bpm);
+      const intervalMs = Math.round(interval * 1000);
+      if (speedEl) speedEl.textContent = `Rain: ${intervalMs}ms/step`;
+    } else {
+      bpmEl.textContent = "";
+      if (speedEl) speedEl.textContent = "";
+    }
+
+    // Update album art thumbnail.
+    if (albumArtEl) {
+      if (spotifyState.albumArt) {
+        albumArtEl.src = spotifyState.albumArt;
+        albumArtEl.style.display = "block";
+      } else {
+        albumArtEl.style.display = "none";
+      }
+    }
   } else {
     trackInfo.style.display = "none";
   }
@@ -357,6 +428,8 @@ function updateUI() {
  * present) and starts polling if a token is already stored.
  */
 async function initSpotify() {
+  console.log("[Matrix] initSpotify — wake up, Neo. Checking Spotify connection...");
+
   // Seed the stored Client ID with the default on first run so the PKCE
   // callback leg can always find a consistent ID in localStorage.
   if (!localStorage.getItem(SPOTIFY_CLIENT_ID_KEY)) {
@@ -367,12 +440,17 @@ async function initSpotify() {
   const code = params.get("code");
   const clientId = getClientId();
 
+  console.log("[Matrix] Using Client ID:", clientId);
+
   if (code) {
+    console.log("[Matrix] OAuth callback detected — exchanging code for token...");
     // Remove the code from the URL so a refresh doesn't re-attempt the exchange.
     window.history.replaceState({}, document.title, window.location.pathname);
     try {
       await exchangeCodeForToken(code, clientId);
-    } catch {
+      console.log("[Matrix] Token exchange successful.");
+    } catch (err) {
+      console.warn("[Matrix] Token exchange failed:", err);
       // Token exchange failed — show the connect button.
     }
   }
@@ -380,9 +458,12 @@ async function initSpotify() {
   // Start polling if we have a stored token.
   const token = await getAccessToken();
   if (token) {
+    console.log("[Matrix] Stored token found — starting polling.");
     spotifyState.connected = true;
     startPolling();
     updateUI();
+  } else {
+    console.log("[Matrix] No stored token — showing connect button.");
   }
 
   // Wire up the "Connect Spotify" button.
@@ -392,6 +473,7 @@ async function initSpotify() {
   if (connectBtn) {
     connectBtn.addEventListener("click", async (e) => {
       e.stopPropagation(); // Don't trigger fullscreen.
+      console.log("[Matrix] Connect Spotify clicked — starting auth flow.");
       await startSpotifyAuth(getClientId());
     });
   }
