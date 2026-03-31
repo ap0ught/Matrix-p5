@@ -238,7 +238,11 @@ async function fetchAudioFeatures(token, trackId) {
   }
 
   if (!response.ok) {
-    audioFeaturesCache[trackId] = null;
+    // Don't cache transient failures (401/429/5xx/etc.) — "follow the white rabbit"
+    // and let the next poll attempt a fresh fetch instead of poisoning the cache.
+    console.warn(
+      `[Matrix] Spotify audio-features request failed with status ${response.status}; will retry later.`
+    );
     return null;
   }
 
