@@ -32,6 +32,8 @@ async function setup() {
 
   gfx = createGraphics(width, height, P2D);
   gfx.textFont(katakanaFont);
+  gfx.textSize(symbolSize);
+  colorMode(HSB, 360, 100, 100);
 
   // Re-acquire the wake lock whenever the page becomes visible again
   // (browsers automatically release it when the tab is hidden).
@@ -71,6 +73,7 @@ function windowResized() {
 
   gfx = createGraphics(width, height, P2D);
   gfx.textFont(katakanaFont);
+  gfx.textSize(symbolSize);
 }
 
 async function requestWakeLock() {
@@ -121,14 +124,14 @@ class Stream {
   }
 
   randomChar() {
-    return String.fromCharCode(0x30a0 + round(random(0, 96)));
+    return String.fromCharCode(0x30a0 + floor(random(0, 96)));
   }
 
   flicker() {
     let r = round(random(0, 2));
 
-    if (r === 0) {
-      let idx = round(random(2, this.text.length));
+    if (r === 0 && this.text.length > 2) {
+      let idx = floor(random(2, this.text.length));
       this.text = replaceAt(this.text, idx, this.randomChar());
     }
   }
@@ -151,8 +154,6 @@ class Stream {
   }
 
   render() {
-    colorMode(HSB, 360, 100, 100);
-
     for (let i = 0; i < this.text.length; i++) {
       let _x = this.x;
       let _y = this.y - i * symbolSize;
@@ -175,7 +176,6 @@ class Stream {
         col = color(0, 0, 100);
       }
 
-      gfx.textSize(symbolSize);
       gfx.fill(col);
       gfx.text(c, _x, _y);
     }
