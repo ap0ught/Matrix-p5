@@ -1,6 +1,14 @@
 let symbolSize = 18;
 let timeElapsed = 0.0;
 
+// BPM range used to map Spotify tempo to stream interval speed.
+const MIN_BPM = 60;
+const MAX_BPM = 200;
+
+// Stream interval bounds: slower interval = slower rain, faster = faster rain.
+const SLOW_INTERVAL = 0.08;
+const FAST_INTERVAL = 0.01;
+
 let cols;
 
 let streams = [];
@@ -86,8 +94,37 @@ async function requestWakeLock() {
   }
 }
 
-// Request a screen wake lock on the first user interaction.
+/**
+ * Map a Spotify BPM value (tempo) to a stream interval.
+ * Faster music (higher BPM) → shorter interval → faster rain.
+ * Range: MIN_BPM → SLOW_INTERVAL,  MAX_BPM → FAST_INTERVAL.
+ */
+function bpmToInterval(bpm) {
+  const clamped = Math.max(MIN_BPM, Math.min(MAX_BPM, bpm));
+  return map(clamped, MIN_BPM, MAX_BPM, SLOW_INTERVAL, FAST_INTERVAL);
+}
+
+/**
+ * Return a base interval driven by the current Spotify BPM when connected,
+ * or a random value for the classic Matrix look.
+ */
+function getBaseInterval() {
+  const state = window.spotifyState;
+  if (state && state.connected && state.bpm) {
+    return bpmToInterval(state.bpm);
+  }
+  return random(FAST_INTERVAL, SLOW_INTERVAL);
+}
+
+// On click: enter fullscreen and request a screen wake lock.
 function mouseClicked() {
+  // Enter fullscreen if not already in it. Browsers require a user gesture,
+  // so a canvas click is the perfect trigger.
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {
+      // Fullscreen may be blocked on some devices/browsers — fail silently.
+    });
+  }
   requestWakeLock();
 }
 
@@ -108,7 +145,7 @@ class Stream {
 
     this.text = this.getRandomString(this.length);
 
-    this.interval = random(0.01, 0.08);
+    this.interval = getBaseInterval();
   }
 
   getRandomString(len) {
@@ -158,7 +195,7 @@ class Stream {
       let _x = this.x;
       let _y = this.y - i * symbolSize;
 
-      let brightVal = map(this.interval, 0.01, 0.08, 100, 20);
+      let brightVal = map(this.interval, FAST_INTERVAL, SLOW_INTERVAL, 100, 20);
       let col = color(132, 92, brightVal);
 
       let c = this.text[i];
@@ -181,3 +218,4 @@ class Stream {
     }
   }
 }
+
