@@ -116,16 +116,32 @@ function getBaseInterval() {
   return random(FAST_INTERVAL, SLOW_INTERVAL);
 }
 
-// On click: enter fullscreen and request a screen wake lock.
+// On single click: request a screen wake lock so the display stays on.
 function mouseClicked() {
-  // Enter fullscreen if not already in it. Browsers require a user gesture,
-  // so a canvas click is the perfect trigger.
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(() => {
-      // Fullscreen may be blocked on some devices/browsers — fail silently.
-    });
-  }
   requestWakeLock();
+}
+
+// On double-click: toggle fullscreen and log the transition to the console.
+function doubleClicked() {
+  if (!document.fullscreenElement) {
+    document.documentElement
+      .requestFullscreen()
+      .then(() => {
+        console.log("[Matrix] Entered fullscreen — wake up, Neo.");
+      })
+      .catch(() => {
+        console.warn("[Matrix] Fullscreen request was denied.");
+      });
+  } else {
+    document
+      .exitFullscreen()
+      .then(() => {
+        console.log("[Matrix] Exited fullscreen.");
+      })
+      .catch(() => {
+        console.warn("[Matrix] Could not exit fullscreen.");
+      });
+  }
 }
 
 class Stream {
