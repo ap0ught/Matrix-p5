@@ -28,8 +28,10 @@ const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
 const SPOTIFY_SCOPES = "user-read-currently-playing user-read-playback-state";
 
-// How often to poll the "currently playing" endpoint (ms).
 const POLL_INTERVAL_MS = 5000;
+
+// Buffer (ms) before token expiry at which we proactively refresh.
+const TOKEN_REFRESH_BUFFER_MS = 60_000;
 
 // Shared state object — sketch.js reads from this.
 const spotifyState = {
@@ -159,7 +161,7 @@ async function getAccessToken() {
   const token = localStorage.getItem(SPOTIFY_TOKEN_KEY);
   const expiry = parseInt(localStorage.getItem(SPOTIFY_TOKEN_EXPIRY_KEY) || "0", 10);
 
-  if (token && Date.now() < expiry - 60_000) {
+  if (token && Date.now() < expiry - TOKEN_REFRESH_BUFFER_MS) {
     return token; // Still valid with at least 1 minute to spare.
   }
 
@@ -257,6 +259,11 @@ function stopPolling() {
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
+/** Spotify Client IDs are exactly 32 lowercase hexadecimal characters. */
+function isValidClientId(id) {
+  return /^[0-9a-f]{32}$/.test(id);
+}
+
 /** Refresh the on-screen track-info overlay. */
 function updateUI() {
   const overlay = document.getElementById("spotify-overlay");
@@ -330,7 +337,16 @@ async function initSpotify() {
         id
       );
       if (id && id.trim()) {
-        await startSpotifyAuth(id.trim());
+        const trimmed = id.trim();
+        if (!isValidClientId(trimmed)) {
+          window.alert(
+            "Invalid Client ID.\n\n" +
+              "A Spotify Client ID is 32 lowercase hexadecimal characters.\n" +
+              "Please copy it exactly from your Spotify Developer Dashboard."
+          );
+          return;
+        }
+        await startSpotifyAuth(trimmed);
       }
     });
   }

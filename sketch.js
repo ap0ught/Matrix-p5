@@ -1,6 +1,14 @@
 let symbolSize = 18;
 let timeElapsed = 0.0;
 
+// BPM range used to map Spotify tempo to stream interval speed.
+const MIN_BPM = 60;
+const MAX_BPM = 200;
+
+// Stream interval bounds: slower interval = slower rain, faster = faster rain.
+const SLOW_INTERVAL = 0.08;
+const FAST_INTERVAL = 0.01;
+
 let cols;
 
 let streams = [];
@@ -89,11 +97,11 @@ async function requestWakeLock() {
 /**
  * Map a Spotify BPM value (tempo) to a stream interval.
  * Faster music (higher BPM) → shorter interval → faster rain.
- * Range: 60 BPM → 0.08 s interval,  200 BPM → 0.01 s interval.
+ * Range: MIN_BPM → SLOW_INTERVAL,  MAX_BPM → FAST_INTERVAL.
  */
 function bpmToInterval(bpm) {
-  const clamped = Math.max(60, Math.min(200, bpm));
-  return map(clamped, 60, 200, 0.08, 0.01);
+  const clamped = Math.max(MIN_BPM, Math.min(MAX_BPM, bpm));
+  return map(clamped, MIN_BPM, MAX_BPM, SLOW_INTERVAL, FAST_INTERVAL);
 }
 
 /**
@@ -187,7 +195,7 @@ class Stream {
       let _x = this.x;
       let _y = this.y - i * symbolSize;
 
-      let brightVal = map(this.interval, 0.01, 0.08, 100, 20);
+      let brightVal = map(this.interval, FAST_INTERVAL, SLOW_INTERVAL, 100, 20);
       let col = color(132, 92, brightVal);
 
       let c = this.text[i];

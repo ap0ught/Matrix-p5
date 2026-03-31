@@ -45,8 +45,16 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   // Only intercept same-origin and pre-cached third-party requests.
   // Let Spotify API calls pass straight through to the network.
-  if (event.request.url.includes("api.spotify.com") ||
-      event.request.url.includes("accounts.spotify.com")) {
+  // Use URL hostname matching (not substring) to avoid false positives.
+  let requestHostname;
+  try {
+    requestHostname = new URL(event.request.url).hostname;
+  } catch {
+    return; // Malformed URL — skip.
+  }
+
+  if (requestHostname === "api.spotify.com" ||
+      requestHostname === "accounts.spotify.com") {
     return;
   }
 
