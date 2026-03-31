@@ -212,14 +212,39 @@ async function fetchCurrentlyPlaying(token) {
   return data.item;
 }
 
+// In-memory cache for audio features keyed by Spotify track ID.
+// Prevents redundant API calls and console 403 spam for the same track.
+const audioFeaturesCache = {};
+
 /** Fetch audio features (tempo/BPM, energy) for a track ID. */
 async function fetchAudioFeatures(token, trackId) {
+  // Return cached result (including a cached null for failed fetches).
+  if (Object.hasOwn(audioFeaturesCache, trackId)) {
+    return audioFeaturesCache[trackId];
+  }
+
   const response = await fetch(`${SPOTIFY_API_BASE}/audio-features/${trackId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  if (!response.ok) return null;
-  return response.json();
+  if (response.status === 403) {
+    // The audio-features endpoint requires specific Spotify plan / token scope.
+    // Cache the failure so we stop retrying and log only once.
+    console.warn(
+      "[Matrix] Spotify audio-features returned 403 — BPM-sync disabled for this track."
+    );
+    audioFeaturesCache[trackId] = null;
+    return null;
+  }
+
+  if (!response.ok) {
+    audioFeaturesCache[trackId] = null;
+    return null;
+  }
+
+  const data = await response.json();
+  audioFeaturesCache[trackId] = data;
+  return data;
 }
 
 // ─── Polling ──────────────────────────────────────────────────────────────────
