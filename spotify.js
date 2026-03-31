@@ -219,7 +219,7 @@ const audioFeaturesCache = {};
 /** Fetch audio features (tempo/BPM, energy) for a track ID. */
 async function fetchAudioFeatures(token, trackId) {
   // Return cached result (including a cached null for failed fetches).
-  if (Object.hasOwn(audioFeaturesCache, trackId)) {
+  if (Object.prototype.hasOwnProperty.call(audioFeaturesCache, trackId)) {
     return audioFeaturesCache[trackId];
   }
 
