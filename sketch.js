@@ -7,6 +7,7 @@ let streams = [];
 
 let gfx;
 let katakanaFont;
+let wakeLock = null;
 
 function replaceAt(str, index, replacement) {
   return (
@@ -31,6 +32,14 @@ async function setup() {
 
   gfx = createGraphics(width, height, P2D);
   gfx.textFont(katakanaFont);
+
+  // Re-acquire the wake lock whenever the page becomes visible again
+  // (browsers automatically release it when the tab is hidden).
+  document.addEventListener("visibilitychange", () => {
+    if (wakeLock !== null && document.visibilityState === "visible") {
+      requestWakeLock();
+    }
+  });
 }
 
 function draw() {
@@ -62,6 +71,21 @@ function windowResized() {
 
   gfx = createGraphics(width, height, P2D);
   gfx.textFont(katakanaFont);
+}
+
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+  } catch (err) {
+    // Request can fail if the document is not visible or the device
+    // doesn't permit it (e.g., low battery). Fail silently.
+  }
+}
+
+// Request a screen wake lock on the first user interaction.
+function mouseClicked() {
+  requestWakeLock();
 }
 
 class Stream {
