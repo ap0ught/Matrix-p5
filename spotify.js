@@ -44,8 +44,10 @@ const SPOTIFY_SCOPES = "user-read-currently-playing user-read-playback-state";
 const MIN_POLL_INTERVAL_MS = 10_000;
 // Poll interval when nothing is currently playing.
 const NO_TRACK_POLL_INTERVAL_MS = 30_000;
-// Divide the remaining song duration by this many to get the next poll delay.
-// This ensures at most ~3 polls over the rest of the current track.
+// Total number of Spotify API polls allowed per track (including the initial
+// discovery poll). Remaining polls are spread evenly across the track's
+// remaining duration; once the budget is exhausted the poller sleeps until
+// the track ends.
 const TRACK_POLLS_PER_SONG = 3;
 
 // Buffer (ms) before token expiry at which we proactively refresh.
@@ -204,7 +206,12 @@ async function getAccessToken() {
 
 // ─── API calls ────────────────────────────────────────────────────────────────
 
-/** Fetch the currently playing track. Returns null if nothing is playing. */
+/**
+ * Fetch the currently playing track.
+ * @returns {Promise<{item: object, progressMs: number|null}|null>}
+ *   An object containing the track `item` and `progressMs` (playback position
+ *   in milliseconds, or null if unavailable), or null if nothing is playing.
+ */
 async function fetchCurrentlyPlaying(token) {
   const response = await fetch(`${SPOTIFY_API_BASE}/me/player/currently-playing`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -264,6 +271,10 @@ async function fetchAudioFeatures(token, trackId) {
 // ─── Polling ──────────────────────────────────────────────────────────────────
 
 let pollTimer = null;
+// Track the Spotify track ID for which the current poll budget applies.
+let currentPolledTrackId = null;
+// Remaining polls available for the current track (decremented each poll).
+let trackPollsRemaining = 0;
 
 /**
  * Schedule the next poll after `delayMs` milliseconds.
@@ -366,18 +377,29 @@ async function pollNowPlaying() {
         console.log("[Matrix] Audio features unavailable — BPM unchanged:", spotifyState.bpm);
       }
 
-      // Calculate how long to snooze before the next poll.
-      // We spread at most TRACK_POLLS_PER_SONG polls across the remaining
-      // duration of the song so we don't hammer the Spotify API.
-      // When the track is nearly finished (remaining < MIN × POLLS_PER_SONG),
-      // coast at the idle interval so the song-boundary doesn't trigger a
-      // burst of rapid polls — the "no track" or next-track path will pick up.
+      // ── Poll budget ────────────────────────────────────────────────────
+      // Reset the budget when the track changes; the current poll counts
+      // as the first use, so initialise remaining = TRACK_POLLS_PER_SONG - 1.
+      if (track.id !== currentPolledTrackId) {
+        currentPolledTrackId = track.id;
+        trackPollsRemaining = TRACK_POLLS_PER_SONG - 1;
+      } else {
+        trackPollsRemaining = Math.max(0, trackPollsRemaining - 1);
+      }
+
       const durationMs = track.duration_ms ?? 0;
       const remaining = Math.max(0, durationMs - (progressMs ?? 0));
-      const nearlyDone = remaining < MIN_POLL_INTERVAL_MS * TRACK_POLLS_PER_SONG;
-      nextDelay = nearlyDone
-        ? NO_TRACK_POLL_INTERVAL_MS
-        : Math.max(MIN_POLL_INTERVAL_MS, remaining / TRACK_POLLS_PER_SONG);
+
+      if (trackPollsRemaining > 0) {
+        // Spread remaining polls evenly across the track's remaining duration.
+        nextDelay = Math.max(MIN_POLL_INTERVAL_MS, remaining / trackPollsRemaining);
+      } else {
+        // Poll budget exhausted — sleep until just after the track ends, then
+        // check whether a new track has started.
+        nextDelay = remaining > 0
+          ? remaining + MIN_POLL_INTERVAL_MS
+          : NO_TRACK_POLL_INTERVAL_MS;
+      }
     }
   } catch (err) {
     // Log the error but keep the rain falling; retry after the idle interval.
