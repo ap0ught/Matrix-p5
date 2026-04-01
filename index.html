@@ -54,18 +54,134 @@
         pointer-events: none; /* let clicks fall through to canvas by default */
       }
 
-      /* Track info card */
-      #spotify-track-info {
-        display: none;
+      /* ── Player card ─────────────────────────────────────────────────── */
+      #spotify-player-card {
+        display: none; /* shown by JS when connected + track available */
         flex-direction: column;
-        align-items: flex-end;
-        gap: 2px;
-        background: rgba(0, 0, 0, 0.72);
+        width: 280px;
+        background: rgba(8, 8, 8, 0.93);
         border: 1px solid #00c853;
-        border-radius: 4px;
-        padding: 8px 12px;
-        max-width: 260px;
-        pointer-events: none;
+        border-radius: 8px;
+        overflow: hidden;
+        pointer-events: auto;
+      }
+
+      /* Album art area */
+      #spotify-art-wrapper {
+        position: relative;
+        width: 280px;
+        height: 280px;
+        background: #061306;
+        flex-shrink: 0;
+      }
+
+      #spotify-album-art {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      /* Gradient overlay on the lower half of the album art */
+      #spotify-controls-layer {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(
+          to top,
+          rgba(0, 0, 0, 0.88) 0%,
+          rgba(0, 0, 0, 0.55) 55%,
+          transparent 100%
+        );
+        padding: 44px 14px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      /* Playback control buttons row */
+      #spotify-controls-row {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 18px;
+      }
+
+      /* Base control button */
+      .sp-btn {
+        background: none;
+        border: none;
+        color: #00e676;
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: background 0.15s, color 0.15s;
+        flex-shrink: 0;
+      }
+
+      .sp-btn:hover {
+        background: rgba(0, 230, 118, 0.15);
+      }
+
+      /* Primary play/pause button — larger with circle border */
+      .sp-btn--primary {
+        width: 44px;
+        height: 44px;
+        border: 1.5px solid #00e676;
+        color: #fff;
+        background: rgba(0, 230, 118, 0.12);
+      }
+
+      .sp-btn--primary:hover {
+        background: rgba(0, 230, 118, 0.28);
+      }
+
+      /* Progress bar row */
+      #spotify-progress-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      #spotify-progress-time,
+      #spotify-duration-time {
+        color: rgba(200, 255, 220, 0.75);
+        font-size: 10px;
+        font-family: "Courier New", Courier, monospace;
+        white-space: nowrap;
+        min-width: 28px;
+      }
+
+      #spotify-duration-time {
+        text-align: right;
+      }
+
+      #spotify-progress-bar {
+        flex: 1;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+
+      #spotify-progress-fill {
+        height: 100%;
+        background: #00e676;
+        border-radius: 2px;
+        width: 0%;
+        transition: width 0.9s linear;
+      }
+
+      /* Track details section below the album art */
+      #spotify-track-info {
+        padding: 10px 14px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
       }
 
       #spotify-track-name {
@@ -75,7 +191,6 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 240px;
       }
 
       #spotify-artist-name {
@@ -84,32 +199,43 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 240px;
+      }
+
+      #spotify-context-name {
+        color: #00c853;
+        font-size: 10px;
+        letter-spacing: 0.04em;
+        opacity: 0.85;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 2px;
       }
 
       #spotify-bpm {
-        color: #00c853;
-        font-size: 10px;
-        letter-spacing: 0.05em;
-      }
-
-      #spotify-speed {
         color: #76ff03;
         font-size: 10px;
         letter-spacing: 0.05em;
-        opacity: 0.8;
+        opacity: 0.7;
+        margin-top: 1px;
       }
 
-      /* Album art thumbnail shown inside the track info card */
-      #spotify-album-art {
-        display: none;
-        width: 64px;
-        height: 64px;
-        object-fit: cover;
-        border-radius: 3px;
-        border: 1px solid #00c853;
-        align-self: flex-end;
-        margin-top: 4px;
+      /* Active state for toggle buttons (shuffle / repeat when on) */
+      .sp-btn--active {
+        color: #00e676;
+        position: relative;
+      }
+
+      .sp-btn--active::after {
+        content: "";
+        position: absolute;
+        bottom: -3px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 4px;
+        height: 4px;
+        background: #00e676;
+        border-radius: 50%;
       }
 
       /* Connect button */
@@ -142,15 +268,83 @@
     </style>
   </head>
   <body>
-    <!-- Spotify overlay: track info + connect button -->
+    <!-- Spotify overlay: rich player card + connect button -->
     <div id="spotify-overlay">
-      <div id="spotify-track-info">
-        <span id="spotify-track-name"></span>
-        <span id="spotify-artist-name"></span>
-        <span id="spotify-bpm"></span>
-        <span id="spotify-speed"></span>
-        <img id="spotify-album-art" alt="Album art" />
-      </div>
+
+      <!-- Player card (visible when connected and a track is loaded) -->
+      <div id="spotify-player-card">
+
+        <!-- Album art with controls and progress overlaid -->
+        <div id="spotify-art-wrapper">
+          <img id="spotify-album-art" alt="Album art" />
+
+          <div id="spotify-controls-layer">
+            <!-- Playback controls row -->
+            <div id="spotify-controls-row">
+
+              <!-- Shuffle -->
+              <button id="spotify-shuffle-btn" class="sp-btn" title="Shuffle" aria-label="Shuffle">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+                </svg>
+              </button>
+
+              <!-- Previous track -->
+              <button id="spotify-prev-btn" class="sp-btn" title="Previous track" aria-label="Previous track">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
+                </svg>
+              </button>
+
+              <!-- Play / Pause (icons toggled by JS) -->
+              <button id="spotify-playpause-btn" class="sp-btn sp-btn--primary" title="Play or pause" aria-label="Play or pause">
+                <svg id="spotify-play-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+                <svg id="spotify-pause-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none">
+                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                </svg>
+              </button>
+
+              <!-- Next track -->
+              <button id="spotify-next-btn" class="sp-btn" title="Next track" aria-label="Next track">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+                </svg>
+              </button>
+
+              <!-- Repeat -->
+              <button id="spotify-repeat-btn" class="sp-btn" title="Repeat" aria-label="Repeat">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
+                </svg>
+              </button>
+
+            </div><!-- /#spotify-controls-row -->
+
+            <!-- Progress bar -->
+            <div id="spotify-progress-row">
+              <span id="spotify-progress-time">0:00</span>
+              <div id="spotify-progress-bar" role="progressbar" aria-label="Track progress">
+                <div id="spotify-progress-fill"></div>
+              </div>
+              <span id="spotify-duration-time">0:00</span>
+            </div>
+
+          </div><!-- /#spotify-controls-layer -->
+        </div><!-- /#spotify-art-wrapper -->
+
+        <!-- Track details below the art -->
+        <div id="spotify-track-info">
+          <span id="spotify-track-name"></span>
+          <span id="spotify-artist-name"></span>
+          <span id="spotify-context-name"></span>
+          <span id="spotify-bpm"></span>
+        </div>
+
+      </div><!-- /#spotify-player-card -->
+
+      <!-- Connect button (visible when not yet connected) -->
       <button id="spotify-connect-btn" title="Connect Spotify">
         <!-- Spotify icon -->
         <svg width="16" height="16" viewBox="0 0 24 24" fill="#00e676" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -158,7 +352,8 @@
         </svg>
         Connect Spotify
       </button>
-    </div>
+
+    </div><!-- /#spotify-overlay -->
 
     <script src="lib/p5.min.js"></script>
     <script src="spotify.js"></script>
