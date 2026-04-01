@@ -40,7 +40,15 @@ const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
 const SPOTIFY_SCOPES = "user-read-currently-playing user-read-playback-state";
 
-const POLL_INTERVAL_MS = 5000;
+// Minimum time between any two polls (guards against hammering the API).
+const MIN_POLL_INTERVAL_MS = 10_000;
+// Poll interval when nothing is currently playing.
+const NO_TRACK_POLL_INTERVAL_MS = 30_000;
+// Total number of Spotify API polls allowed per track (including the initial
+// discovery poll). Remaining polls are spread evenly across the track's
+// remaining duration; once the budget is exhausted the poller sleeps until
+// the track ends.
+const TRACK_POLLS_PER_SONG = 3;
 
 // Buffer (ms) before token expiry at which we proactively refresh.
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
@@ -198,7 +206,12 @@ async function getAccessToken() {
 
 // ─── API calls ────────────────────────────────────────────────────────────────
 
-/** Fetch the currently playing track. Returns null if nothing is playing. */
+/**
+ * Fetch the currently playing track.
+ * @returns {Promise<{item: object, progressMs: number|null}|null>}
+ *   An object containing the track `item` and `progressMs` (playback position
+ *   in milliseconds, or null if unavailable), or null if nothing is playing.
+ */
 async function fetchCurrentlyPlaying(token) {
   const response = await fetch(`${SPOTIFY_API_BASE}/me/player/currently-playing`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -210,7 +223,10 @@ async function fetchCurrentlyPlaying(token) {
   const data = await response.json();
   if (!data || !data.item) return null;
 
-  return data.item;
+  return {
+    item: data.item,
+    progressMs: data.progress_ms ?? null,
+  };
 }
 
 // In-memory cache for audio features keyed by Spotify track ID.
@@ -255,8 +271,26 @@ async function fetchAudioFeatures(token, trackId) {
 // ─── Polling ──────────────────────────────────────────────────────────────────
 
 let pollTimer = null;
+// Track the Spotify track ID for which the current poll budget applies.
+let currentPolledTrackId = null;
+// Remaining polls available for the current track (decremented each poll).
+let trackPollsRemaining = 0;
 
-/** Poll Spotify and update spotifyState. Called on an interval. */
+/**
+ * Schedule the next poll after `delayMs` milliseconds.
+ * Cancels any previously pending timer so we never queue duplicate polls.
+ */
+function scheduleNextPoll(delayMs) {
+  if (pollTimer !== null) clearTimeout(pollTimer);
+  const delaySec = (delayMs / 1000).toFixed(0);
+  console.log(`[Matrix] Next Spotify poll in ${delaySec}s.`);
+  pollTimer = setTimeout(() => {
+    pollTimer = null;
+    pollNowPlaying();
+  }, delayMs);
+}
+
+/** Poll Spotify and update spotifyState. Self-schedules the next poll. */
 async function pollNowPlaying() {
   console.log("[Matrix] pollNowPlaying — follow the white rabbit...");
 
@@ -272,10 +306,13 @@ async function pollNowPlaying() {
   console.log("[Matrix] Access token valid — fetching currently playing track.");
   spotifyState.connected = true;
 
-  try {
-    const track = await fetchCurrentlyPlaying(token);
+  // Default delay used when we have no track duration to work from.
+  let nextDelay = NO_TRACK_POLL_INTERVAL_MS;
 
-    if (!track) {
+  try {
+    const playing = await fetchCurrentlyPlaying(token);
+
+    if (!playing) {
       // Nothing playing — clear track metadata but keep the last known BPM
       // so the rain doesn't abruptly reset. Wake up, Neo: the stream remembers
       // the tempo of the last track that fell.
@@ -283,80 +320,106 @@ async function pollNowPlaying() {
       spotifyState.trackName = null;
       spotifyState.artistName = null;
       spotifyState.albumArt = null;
-      updateUI();
-      return;
-    }
-
-    const prevTrackName = spotifyState.trackName;
-    spotifyState.trackName = track.name;
-    spotifyState.artistName =
-      track.artists && track.artists.length > 0
-        ? track.artists[0].name
-        : "Unknown";
-
-    // Capture the best album art URL available (prefer smallest for overlay use).
-    if (track.album && track.album.images && track.album.images.length > 0) {
-      const images = track.album.images;
-      // images are sorted largest → smallest; pick the smallest that exists,
-      // fall back to the first (largest) if there's only one.
-      const img = images[images.length - 1];
-      spotifyState.albumArt = img.url;
+      // Keep nextDelay = NO_TRACK_POLL_INTERVAL_MS (already set above).
     } else {
-      spotifyState.albumArt = null;
-    }
+      const track = playing.item;
+      const progressMs = playing.progressMs;
 
-    if (prevTrackName !== spotifyState.trackName) {
-      console.log(
-        `[Matrix] Track changed → "${spotifyState.trackName}" by ${spotifyState.artistName}`
-      );
-    } else {
-      console.log(
-        `[Matrix] Now playing: "${spotifyState.trackName}" by ${spotifyState.artistName}`
-      );
-    }
+      const prevTrackName = spotifyState.trackName;
+      spotifyState.trackName = track.name;
+      spotifyState.artistName =
+        track.artists && track.artists.length > 0
+          ? track.artists[0].name
+          : "Unknown";
 
-    console.log("[Matrix] Track ID:", track.id, "| Album art:", spotifyState.albumArt);
+      // Capture the best album art URL available (prefer smallest for overlay use).
+      if (track.album && track.album.images && track.album.images.length > 0) {
+        const images = track.album.images;
+        // images are sorted largest → smallest; pick the smallest that exists,
+        // fall back to the first (largest) if there's only one.
+        const img = images[images.length - 1];
+        spotifyState.albumArt = img.url;
+      } else {
+        spotifyState.albumArt = null;
+      }
 
-    // Fetch audio features for BPM and energy.
-    const features = await fetchAudioFeatures(token, track.id);
-    if (features) {
-      const prevBpm = spotifyState.bpm;
-      spotifyState.bpm = features.tempo;
-      spotifyState.energy = features.energy;
-      const bpmStr = spotifyState.bpm != null ? spotifyState.bpm.toFixed(1) : "n/a";
-      const energyStr = spotifyState.energy != null ? spotifyState.energy.toFixed(3) : "n/a";
-      if (prevBpm !== spotifyState.bpm) {
-        const prevBpmStr = prevBpm != null ? prevBpm.toFixed(1) : "none";
+      if (prevTrackName !== spotifyState.trackName) {
         console.log(
-          `[Matrix] BPM updated: ${prevBpmStr} → ${bpmStr} | Energy: ${energyStr}`
+          `[Matrix] Track changed → "${spotifyState.trackName}" by ${spotifyState.artistName}`
         );
       } else {
         console.log(
-          `[Matrix] BPM: ${bpmStr} | Energy: ${energyStr}`
+          `[Matrix] Now playing: "${spotifyState.trackName}" by ${spotifyState.artistName}`
         );
       }
-    } else {
-      console.log("[Matrix] Audio features unavailable — BPM unchanged:", spotifyState.bpm);
+
+      console.log("[Matrix] Track ID:", track.id, "| Album art:", spotifyState.albumArt);
+
+      // Fetch audio features for BPM and energy.
+      const features = await fetchAudioFeatures(token, track.id);
+      if (features) {
+        const prevBpm = spotifyState.bpm;
+        spotifyState.bpm = features.tempo;
+        spotifyState.energy = features.energy;
+        const bpmStr = spotifyState.bpm != null ? spotifyState.bpm.toFixed(1) : "n/a";
+        const energyStr = spotifyState.energy != null ? spotifyState.energy.toFixed(3) : "n/a";
+        if (prevBpm !== spotifyState.bpm) {
+          const prevBpmStr = prevBpm != null ? prevBpm.toFixed(1) : "none";
+          console.log(
+            `[Matrix] BPM updated: ${prevBpmStr} → ${bpmStr} | Energy: ${energyStr}`
+          );
+        } else {
+          console.log(
+            `[Matrix] BPM: ${bpmStr} | Energy: ${energyStr}`
+          );
+        }
+      } else {
+        console.log("[Matrix] Audio features unavailable — BPM unchanged:", spotifyState.bpm);
+      }
+
+      // ── Poll budget ────────────────────────────────────────────────────
+      // Reset the budget when the track changes; the current poll counts
+      // as the first use, so initialise remaining = TRACK_POLLS_PER_SONG - 1.
+      if (track.id !== currentPolledTrackId) {
+        currentPolledTrackId = track.id;
+        trackPollsRemaining = TRACK_POLLS_PER_SONG - 1;
+      } else {
+        trackPollsRemaining = Math.max(0, trackPollsRemaining - 1);
+      }
+
+      const durationMs = track.duration_ms ?? 0;
+      const remaining = Math.max(0, durationMs - (progressMs ?? 0));
+
+      if (trackPollsRemaining > 0) {
+        // Spread remaining polls evenly across the track's remaining duration.
+        nextDelay = Math.max(MIN_POLL_INTERVAL_MS, remaining / trackPollsRemaining);
+      } else {
+        // Poll budget exhausted — sleep until just after the track ends, then
+        // check whether a new track has started.
+        nextDelay = remaining > 0
+          ? remaining + MIN_POLL_INTERVAL_MS
+          : NO_TRACK_POLL_INTERVAL_MS;
+      }
     }
   } catch (err) {
-    // Log the error but keep the rain falling.
+    // Log the error but keep the rain falling; retry after the idle interval.
     console.warn("[Matrix] pollNowPlaying error:", err);
   }
 
   updateUI();
+  scheduleNextPoll(nextDelay);
 }
 
 function startPolling() {
-  if (pollTimer !== null) return;
-  console.log("[Matrix] Starting Spotify poll — interval:", POLL_INTERVAL_MS, "ms");
-  pollNowPlaying(); // Immediate first poll.
-  pollTimer = setInterval(pollNowPlaying, POLL_INTERVAL_MS);
+  if (pollTimer !== null) return; // Already scheduled.
+  console.log("[Matrix] Starting Spotify poll — smart scheduling enabled.");
+  pollNowPlaying(); // Immediate first poll; subsequent polls are self-scheduled.
 }
 
 function stopPolling() {
   if (pollTimer !== null) {
     console.log("[Matrix] Stopping Spotify poll.");
-    clearInterval(pollTimer);
+    clearTimeout(pollTimer);
     pollTimer = null;
   }
 }
