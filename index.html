@@ -93,6 +93,25 @@
         letter-spacing: 0.05em;
       }
 
+      #spotify-speed {
+        color: #76ff03;
+        font-size: 10px;
+        letter-spacing: 0.05em;
+        opacity: 0.8;
+      }
+
+      /* Album art thumbnail shown inside the track info card */
+      #spotify-album-art {
+        display: none;
+        width: 64px;
+        height: 64px;
+        object-fit: cover;
+        border-radius: 3px;
+        border: 1px solid #00c853;
+        align-self: flex-end;
+        margin-top: 4px;
+      }
+
       /* Connect button */
       #spotify-connect-btn {
         display: flex;
@@ -129,6 +148,8 @@
         <span id="spotify-track-name"></span>
         <span id="spotify-artist-name"></span>
         <span id="spotify-bpm"></span>
+        <span id="spotify-speed"></span>
+        <img id="spotify-album-art" alt="Album art" />
       </div>
       <button id="spotify-connect-btn" title="Connect Spotify">
         <!-- Spotify icon -->
